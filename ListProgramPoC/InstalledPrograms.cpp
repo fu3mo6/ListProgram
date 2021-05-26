@@ -19,13 +19,13 @@ static wstring GetInstallerKeyNameFromGuid(wstring GuidName);
 static void AddToList(vector<Software>* TheList, Software software);
 
 
-Software::Software(wstring name, wstring version, wstring location, wstring icon, Arch arch)
-	: DisplayName(name), Version(version), InstallLocation(location), Icon(icon), Architecture(arch), origin("undefined")
+Software::Software(wstring name, wstring version, wstring location, wstring date, Arch arch)
+	: DisplayName(name), Version(version), InstallLocation(location), InstallDate(date), Architecture(arch), origin("undefined")
 {
 }
 
-Software::Software(wstring name, wstring version, wstring location, wstring icon, Arch arch, string origin)
-	: DisplayName(name), Version(version), InstallLocation(location), Icon(icon), Architecture(arch), origin(origin)
+Software::Software(wstring name, wstring version, wstring location, wstring date, Arch arch, string origin)
+	: DisplayName(name), Version(version), InstallLocation(location), InstallDate(date), Architecture(arch), origin(origin)
 {
 }
 
@@ -55,10 +55,10 @@ vector<Software>* InstalledPrograms::GetInstalledProgramsImp(bool IncludeUpdates
 	// Documentation Here http://msdn.microsoft.com/en-us/library/windows/desktop/aa384253(v=vs.85).aspx
 
 	RegistryKey* Wow64UninstallKey = RegistryKey::HKLM().OpenSubKey32(L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-	SoftwareList = GetUninstallKeyPrograms(Wow64UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, "RegistryKeyWin32");
+	SoftwareList = GetUninstallKeyPrograms(Wow64UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\");
 
 	RegistryKey* UninstallKey = RegistryKey::HKLM().OpenSubKey64(L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-	SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, "RegistryKeyWin64");
+	SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\");
 
 	vector<wstring> subkeys = RegistryKey::HKU().GetSubKeyNames();
 
@@ -69,13 +69,13 @@ vector<Software>* InstalledPrograms::GetInstalledProgramsImp(bool IncludeUpdates
 
 		wstring uninstallsubs = (*it) + L"\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
 		RegistryKey* UninstallKey = RegistryKey::HKU().OpenSubKey(uninstallsubs);
-		SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, wstringToString(uninstallsubs));
+		SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, wstringToString(uninstallsubs) + "\\");
 		if (UninstallKey)
 			delete UninstallKey;
 
 		wstring installersubs = (*it) + L"\\Software\\Microsoft\\Installer\\Products";
 		RegistryKey* InstallerKey = RegistryKey::HKU().OpenSubKey(installersubs);
-		SoftwareList = GetUserInstallerKeyPrograms(InstallerKey, SoftwareList, wstringToString(installersubs));
+		SoftwareList = GetUserInstallerKeyPrograms(InstallerKey, SoftwareList, wstringToString(installersubs) + "\\");
 		if (InstallerKey)
 			delete InstallerKey;
 	}
@@ -131,7 +131,8 @@ vector<Software>* InstalledPrograms::GetUserInstallerKeyPrograms(RegistryKey* uI
 					{
 						if (productit->compare(*it) == 0)
 						{
-							RegistryKey* UserDataProgramKey = RegistryKey::HKLM().OpenSubKey(wstring(L"Software\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\").append(*userdatait).append(L"\\Products\\").append(*productit).append(L"\\InstallProperties"), UnKnown);
+							wstring keyLocation = wstring(L"Software\\Microsoft\\Windows\\CurrentVersion\\Installer\\UserData\\").append(*userdatait).append(L"\\Products\\").append(*productit).append(L"\\InstallProperties");
+							RegistryKey* UserDataProgramKey = RegistryKey::HKLM().OpenSubKey(keyLocation, UnKnown);
 							if (UserDataProgramKey != NULL)
 							{
 								if (UserDataProgramKey->GetValue(L"SystemComponent").compare(L"") == 0 || _wtoi(UserDataProgramKey->GetValue(L"SystemComponent").c_str()) != 1)
@@ -153,18 +154,12 @@ vector<Software>* InstalledPrograms::GetUserInstallerKeyPrograms(RegistryKey* uI
 									// InstallLocation
 									wstring InstallLocation = UserDataProgramKey->GetValue(L"InstallLocation");
 
-									// Icon
-									wstring Icon1 = temp->GetValue(L"ProductIcon");
-									wstring Icon2 = UserDataProgramKey->GetValue(L"DisplayIcon");
-									wstring Icon = L"";
-									if (Icon1.compare(L"") == 0)
-										Icon = Icon2;
-									else
-										Icon = Icon1;
+									// Date
+									wstring Date = UserDataProgramKey->GetValue(L"InstallDate");
 
 									if (Name.compare(L"") != 0)
 									{
-										AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UserData->KeyArch, origin));
+										AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Date, UserData->KeyArch, wstringToString(keyLocation)));
 										ProductFound = true;
 									}
 									delete temp;
@@ -224,8 +219,8 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(
 					wstring Name = CurrentSubKey->GetValue(L"DisplayName");
 					// InstallLocation
 					wstring InstallLocation = CurrentSubKey->GetValue(L"InstallLocation");
-					// Icon
-					wstring Icon = CurrentSubKey->GetValue(L"DisplayIcon");
+					// Date
+					wstring Date = CurrentSubKey->GetValue(L"InstallDate");
 
 					//Check to see if this program is classed as an update
 					if (regex_match(*SubKeyName, WindowsUpdateRegEx) == true || \
@@ -239,7 +234,7 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(
 							//Add the program to our list if we are including updates in this search
 							if (Name.compare(L"") != 0)
 							{
-								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch, origin));
+								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Date, UninstallKey->KeyArch, origin + wstringToString(*SubKeyName)));
 							}
 						}
 					}
@@ -250,7 +245,7 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(
 						{
 							if (Name.compare(L"") != 0)
 							{
-								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch, origin));
+								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Date, UninstallKey->KeyArch, origin + wstringToString(*SubKeyName)));
 							}
 						}
 					}
@@ -261,13 +256,11 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(
 				{
 					// Name
 					wstring Name1 = L"";
-					wstring  Icon1 = L"";
 					wstring MsiKeyName = GetInstallerKeyNameFromGuid(*SubKeyName);
 					RegistryKey* CrGuidKey = ClassesKey->OpenSubKey(MsiKeyName, ClassesKey->KeyArch);
 					if (CrGuidKey != NULL)
 					{
 						Name1 = CrGuidKey->GetValue(L"ProductName");
-						Icon1 = CrGuidKey->GetValue(L"ProductIcon");
 						delete CrGuidKey;
 					}
 					wstring Name2 = CurrentSubKey->GetValue(L"DisplayName");
@@ -284,17 +277,12 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(
 					// InstallLocation
 					wstring InstallLocation = CurrentSubKey->GetValue(L"InstallLocation");
 
-					// Icon
-					wstring Icon2 = CurrentSubKey->GetValue(L"DisplayIcon");
-					wstring Icon = L"";
-					if (Icon1.compare(L"") == 0)
-						Icon = Icon2;
-					else
-						Icon = Icon1;
+					// Date
+					wstring Date = CurrentSubKey->GetValue(L"InstallDate");
 
 					if (Name.compare(L"") != 0)
 					{
-						AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch, origin));
+						AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Date, UninstallKey->KeyArch, origin + wstringToString(*SubKeyName)));
 					}
 				}
 			}
@@ -340,16 +328,16 @@ static void AddToList(vector<Software>* TheList, Software software)
 				software.Architecture = duplicate.Architecture;
 		}
 
-		// Merge Icon
-		if (software.Icon.compare(L"") != 0 && duplicate.Icon.compare(L"") != 0 && software.Icon.compare(duplicate.Icon) != 0)
+		// Merge Date
+		if (software.InstallDate.compare(L"") != 0 && duplicate.InstallDate.compare(L"") != 0 && software.InstallDate.compare(duplicate.InstallDate) != 0)
 		{
 			TheList->push_back(software);
 			return;
 		}
 		else
 		{
-			if (software.Icon.compare(L"") == 0)
-				software.Icon = duplicate.Icon;
+			if (software.InstallDate.compare(L"") == 0)
+				software.InstallDate = duplicate.InstallDate;
 		}
 
 		// Merge Location

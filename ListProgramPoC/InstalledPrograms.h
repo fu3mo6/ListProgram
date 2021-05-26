@@ -16,7 +16,6 @@ public:
 	wstring Version;
 	wstring InstallDate;
 	Arch Architecture; // 32 or 64
-	wstring Icon;
 	string origin;
 	Software(wstring, wstring, wstring, wstring, Arch);
 	Software(wstring, wstring, wstring, wstring, Arch, string);
