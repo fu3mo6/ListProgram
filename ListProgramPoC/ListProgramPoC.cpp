@@ -2,14 +2,23 @@
 //
 
 #include <iostream>
+#include <string>
 #include "InstalledPrograms.h"
 
 int main()
 {
-    std::cout << "Hello World!\n";
-
     InstalledPrograms installPrograms;
     auto result = installPrograms.GetInstalledPrograms(false);
+
+    std::cout << "origin, desplayName, version, install location" << std::endl;
+    for (const auto& product : *(result))
+    {
+        std::cout << "\"" << product.origin << "\",";
+        std::cout << "\"" << wstringToString(product.DisplayName) << "\",";
+        std::cout << "\"" << wstringToString(product.Version) << "\",";
+        std::cout << "\"" << wstringToString(product.InstallLocation) << "\"" << std::endl;
+    }
+
     return 0;
 }
 

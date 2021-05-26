@@ -2,11 +2,30 @@
 #include <algorithm>
 #include <regex>
 
+#include <codecvt>
+#include <locale>
+
+std::wstring stringToWstring(const std::string& str)
+{
+	return std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(str);
+}
+
+std::string wstringToString(const std::wstring& wstr)
+{
+	return std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(wstr);
+}
+
 static wstring GetInstallerKeyNameFromGuid(wstring GuidName);
 static void AddToList(vector<Software>* TheList, Software software);
 
 
-Software::Software(wstring name, wstring version, wstring location, wstring icon, Arch arch) : DisplayName(name), Version(version), InstallLocation(location), Icon(icon), Architecture(arch)
+Software::Software(wstring name, wstring version, wstring location, wstring icon, Arch arch)
+	: DisplayName(name), Version(version), InstallLocation(location), Icon(icon), Architecture(arch), origin("undefined")
+{
+}
+
+Software::Software(wstring name, wstring version, wstring location, wstring icon, Arch arch, string origin)
+	: DisplayName(name), Version(version), InstallLocation(location), Icon(icon), Architecture(arch), origin(origin)
 {
 }
 
@@ -36,10 +55,10 @@ vector<Software>* InstalledPrograms::GetInstalledProgramsImp(bool IncludeUpdates
 	// Documentation Here http://msdn.microsoft.com/en-us/library/windows/desktop/aa384253(v=vs.85).aspx
 
 	RegistryKey* Wow64UninstallKey = RegistryKey::HKLM().OpenSubKey32(L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-	SoftwareList = GetUninstallKeyPrograms(Wow64UninstallKey, ClassesKey, SoftwareList, IncludeUpdates);
+	SoftwareList = GetUninstallKeyPrograms(Wow64UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, "RegistryKeyWin32");
 
 	RegistryKey* UninstallKey = RegistryKey::HKLM().OpenSubKey64(L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall");
-	SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates);
+	SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, "RegistryKeyWin64");
 
 	vector<wstring> subkeys = RegistryKey::HKU().GetSubKeyNames();
 
@@ -50,13 +69,13 @@ vector<Software>* InstalledPrograms::GetInstalledProgramsImp(bool IncludeUpdates
 
 		wstring uninstallsubs = (*it) + L"\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
 		RegistryKey* UninstallKey = RegistryKey::HKU().OpenSubKey(uninstallsubs);
-		SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates);
+		SoftwareList = GetUninstallKeyPrograms(UninstallKey, ClassesKey, SoftwareList, IncludeUpdates, wstringToString(uninstallsubs));
 		if (UninstallKey)
 			delete UninstallKey;
 
 		wstring installersubs = (*it) + L"\\Software\\Microsoft\\Installer\\Products";
 		RegistryKey* InstallerKey = RegistryKey::HKU().OpenSubKey(installersubs);
-		SoftwareList = GetUserInstallerKeyPrograms(InstallerKey, SoftwareList);
+		SoftwareList = GetUserInstallerKeyPrograms(InstallerKey, SoftwareList, wstringToString(installersubs));
 		if (InstallerKey)
 			delete InstallerKey;
 	}
@@ -72,7 +91,7 @@ vector<Software>* InstalledPrograms::GetInstalledProgramsImp(bool IncludeUpdates
 
 }
 
-vector<Software>* InstalledPrograms::GetUserInstallerKeyPrograms(RegistryKey* uInstallerKey, vector<Software>* ExistingProgramList)
+vector<Software>* InstalledPrograms::GetUserInstallerKeyPrograms(RegistryKey* uInstallerKey, vector<Software>* ExistingProgramList, string origin)
 {
 	if (uInstallerKey == NULL)
 		return ExistingProgramList;
@@ -145,7 +164,7 @@ vector<Software>* InstalledPrograms::GetUserInstallerKeyPrograms(RegistryKey* uI
 
 									if (Name.compare(L"") != 0)
 									{
-										AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UserData->KeyArch));
+										AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UserData->KeyArch, origin));
 										ProductFound = true;
 									}
 									delete temp;
@@ -168,7 +187,8 @@ vector<Software>* InstalledPrograms::GetUserInstallerKeyPrograms(RegistryKey* uI
 	return ExistingProgramList;
 }
 
-vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(RegistryKey* UninstallKey, RegistryKey* ClassesKey, vector<Software>* ExistingProgramList, bool IncludeUpdates)
+vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(
+	RegistryKey* UninstallKey, RegistryKey* ClassesKey, vector<Software>* ExistingProgramList, bool IncludeUpdates, string origin)
 {
 	//Make sure the key exists
 	if (UninstallKey != NULL)
@@ -219,7 +239,7 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(RegistryKey* Uninst
 							//Add the program to our list if we are including updates in this search
 							if (Name.compare(L"") != 0)
 							{
-								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch));
+								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch, origin));
 							}
 						}
 					}
@@ -230,7 +250,7 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(RegistryKey* Uninst
 						{
 							if (Name.compare(L"") != 0)
 							{
-								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch));
+								AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch, origin));
 							}
 						}
 					}
@@ -274,7 +294,7 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(RegistryKey* Uninst
 
 					if (Name.compare(L"") != 0)
 					{
-						AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch));
+						AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Icon, UninstallKey->KeyArch, origin));
 					}
 				}
 			}
