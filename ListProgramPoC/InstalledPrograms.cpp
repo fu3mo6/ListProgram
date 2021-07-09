@@ -282,7 +282,7 @@ vector<Software>* InstalledPrograms::GetUninstallKeyPrograms(
 
 					if (Name.compare(L"") != 0)
 					{
-						AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Date, UninstallKey->KeyArch, origin + wstringToString(*SubKeyName)));
+						AddToList(ExistingProgramList, Software(Name, ProgVersion, InstallLocation, Date, UninstallKey->KeyArch, origin + wstringToString(MsiKeyName)));
 					}
 				}
 			}

@@ -8,7 +8,7 @@
 int main()
 {
     InstalledPrograms installPrograms;
-    auto result = installPrograms.GetInstalledPrograms(false);
+    auto result = installPrograms.GetInstalledPrograms(true);
 
     std::cout << "registry key location, desplayName, version, install date, install location" << std::endl;
     for (const auto& product : *(result))
